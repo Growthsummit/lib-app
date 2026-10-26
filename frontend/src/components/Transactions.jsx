@@ -1,64 +1,58 @@
 import { useState } from 'react';
+import { apiRequest } from '../utils/api';
 
 export default function Transactions({
-  books, setBooks, logs, setLogs, isAdmin, currentUser, addLog
+  books, setBooks, logs, setLogs, isAdmin
 }) {
   const [bookId, setBookId] = useState('');
   const [action, setAction] = useState(isAdmin ? 'add' : 'deduct');
   const [qty, setQty] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!bookId) {
       alert('Please select a book.');
       return;
     }
-    const q = parseInt(qty, 10);
-    if (!q || q < 1) {
+    const q = Number(qty);
+    if (!Number.isSafeInteger(q) || q < 1) {
       alert('Please enter a valid quantity.');
       return;
     }
 
-    const book = books.find(b => b.id === bookId);
-    if (!book) return;
-
-    if (action === 'add') {
-      setBooks(prev => prev.map(b =>
-        b.id === bookId ? { ...b, quantity: b.quantity + q } : b
-      ));
-      if (isAdmin) {
-        addLog(`Added ${q} stock to "${book.title}" (now ${book.quantity + q})`);
-      } else {
-        addLog(`${currentUser.username} returned ${q} of "${book.title}" (now ${book.quantity + q})`);
-      }
-    } else {
-      if (book.quantity < q) {
-        alert(`Not enough stock. Only ${book.quantity} available.`);
-        return;
-      }
-      setBooks(prev => prev.map(b =>
-        b.id === bookId ? { ...b, quantity: b.quantity - q } : b
-      ));
-      if (isAdmin) {
-        addLog(`Deducted ${q} from "${book.title}" (now ${book.quantity - q})`);
-      } else {
-        addLog(`${currentUser.username} borrowed ${q} of "${book.title}" (now ${book.quantity - q})`);
-      }
+    try {
+      const result = await apiRequest('/transactions', {
+        method: 'POST',
+        body: JSON.stringify({ bookId, action, quantity: q })
+      });
+      setBooks((previous) => previous.map((book) => (
+        book.id === result.book.id ? result.book : book
+      )));
+      const transactions = await apiRequest('/transactions');
+      setLogs(transactions.map((item) => item.message));
+    } catch (error) {
+      alert(error.message);
+      return;
     }
 
     setBookId('');
     setQty('');
   };
 
-  const clearLog = () => {
+  const clearLog = async () => {
     if (!isAdmin) return;
     if (logs.length === 0) {
       alert('Transaction history is already empty.');
       return;
     }
     if (!confirm('Clear all transaction history? This cannot be undone.')) return;
-    setLogs([]);
+    try {
+      await apiRequest('/transactions', { method: 'DELETE' });
+      setLogs([]);
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   return (
@@ -121,13 +115,11 @@ export default function Transactions({
         <h3 className="section-subtitle" style={{ marginTop: '0', borderBottom: 'none', paddingBottom: '0' }}>
           Transaction Log
         </h3>
-        <button
-          className="btn btn-delete"
-          disabled={!isAdmin}
-          onClick={clearLog}
-        >
-          Clear History
-        </button>
+        {isAdmin && (
+          <button className="btn btn-delete" onClick={clearLog}>
+            Clear History
+          </button>
+        )}
       </div>
 
       <ul className="log-list">

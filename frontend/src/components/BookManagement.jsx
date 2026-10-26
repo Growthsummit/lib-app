@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { apiRequest } from '../utils/api';
 
-export default function BookManagement({ books, setBooks, isAdmin, addLog }) {
+export default function BookManagement({ books, setBooks, isAdmin, onTransactionsChanged }) {
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -17,7 +18,7 @@ export default function BookManagement({ books, setBooks, isAdmin, addLog }) {
     setQty('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isAdmin) return;
 
@@ -25,28 +26,33 @@ export default function BookManagement({ books, setBooks, isAdmin, addLog }) {
     const a = author.trim();
     const g = genre.trim();
     const i = isbn.trim();
-    const q = parseInt(qty, 10);
+    const q = Number(qty);
 
-    if (!t || !a || !i || !q || q < 1) {
+    if (!t || !a || !i || !Number.isSafeInteger(q) || q < 1) {
       alert('Please fill in all required fields correctly.');
       return;
     }
 
-    if (editingId) {
-      setBooks(prev => prev.map(b =>
-        b.id === editingId
-          ? { ...b, title: t, author: a, genre: g, isbn: i, quantity: q }
-          : b
-      ));
-      addLog(` Updated book: "${t}"`);
-    } else {
-      setBooks(prev => [...prev, {
-        id: Date.now().toString(),
-        title: t, author: a, genre: g, isbn: i, quantity: q
-      }]);
-      addLog(`Added book: "${t}"`);
+    try {
+      const payload = { title: t, author: a, genre: g, isbn: i, quantity: q };
+      const savedBook = editingId
+        ? await apiRequest(`/books/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        })
+        : await apiRequest('/books', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      const quantityChanged = !editingId || books.find((book) => book.id === editingId)?.quantity !== savedBook.quantity;
+      setBooks((previous) => editingId
+        ? previous.map((book) => book.id === editingId ? savedBook : book)
+        : [...previous, savedBook]);
+      resetForm();
+      if (quantityChanged) await onTransactionsChanged();
+    } catch (error) {
+      alert(error.message);
     }
-    resetForm();
   };
 
   const startEdit = (b) => {
@@ -59,12 +65,15 @@ export default function BookManagement({ books, setBooks, isAdmin, addLog }) {
     setQty(String(b.quantity));
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!isAdmin) return;
     if (!confirm('Delete this book?')) return;
-    const b = books.find(x => x.id === id);
-    setBooks(prev => prev.filter(x => x.id !== id));
-    if (b) addLog(`Deleted book: "${b.title}"`);
+    try {
+      await apiRequest(`/books/${id}`, { method: 'DELETE' });
+      setBooks((previous) => previous.filter((book) => book.id !== id));
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   return (
