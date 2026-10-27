@@ -1,56 +1,76 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import mysql from 'mysql2/promise';
+import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 
-const dbConfig = {
-  host: process.env.DB_HOST || (
-    process.env.NODE_ENV === 'production' ? 'library-mysql' : 'localhost'
-  ),
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  ssl: process.env.DB_SSL === 'true'
-    ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
-    : undefined
-};
+const databaseUrl = process.env.TURSO_DATABASE_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-export const pool = mysql.createPool({
-  ...dbConfig,
-  database: process.env.DB_NAME || 'library_management',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  enableKeepAlive: true
+if (!databaseUrl || !authToken) {
+  throw new Error('Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN to connect to the Turso database.');
+}
+
+const client = createClient({
+  url: databaseUrl,
+  authToken
 });
+
+function isReadQuery(sql) {
+  return /^\s*(SELECT|PRAGMA|EXPLAIN)\b/i.test(sql);
+}
+
+function normalizeResult(result, sql) {
+  if (isReadQuery(sql)) return [result.rows];
+  return [{
+    insertId: Number(result.lastInsertRowid || 0),
+    affectedRows: result.rowsAffected
+  }];
+}
+
+async function executeOn(connection, sql, args = []) {
+  const result = await connection.execute({ sql, args });
+  return normalizeResult(result, sql);
+}
+
+export function isUniqueConstraintError(error) {
+  return error?.code === 'SQLITE_CONSTRAINT_UNIQUE'
+    || (error?.code?.startsWith('SQLITE_CONSTRAINT') && /UNIQUE constraint failed/i.test(error.message));
+}
+
+export const pool = {
+  execute: (sql, args) => executeOn(client, sql, args),
+  async getConnection() {
+    let transaction;
+    return {
+      async beginTransaction() {
+        transaction = await client.transaction('write');
+      },
+      execute(sql, args) {
+        if (!transaction) throw new Error('Database transaction has not been started.');
+        return executeOn(transaction, sql, args);
+      },
+      async commit() {
+        if (!transaction) throw new Error('Database transaction has not been started.');
+        await transaction.commit();
+        transaction = undefined;
+      },
+      async rollback() {
+        if (!transaction) return;
+        await transaction.rollback();
+        transaction = undefined;
+      },
+      release() {}
+    };
+  }
+};
 
 export async function initializeDatabase() {
   const schemaPath = fileURLToPath(new URL('../schema.sql', import.meta.url));
-  let schema = await readFile(schemaPath, 'utf8');
-  const dbName = process.env.DB_NAME || 'library_management';
+  const schema = await readFile(schemaPath, 'utf8');
+  const statements = schema.split(';').map((statement) => statement.trim()).filter(Boolean);
 
-  // Remove hardcoded CREATE DATABASE and USE statements from schema
-  // and handle it dynamically based on .env
-  schema = schema.replace(/CREATE DATABASE IF NOT EXISTS `?\w+`?[^;]*;/i, '');
-  schema = schema.replace(/USE `?\w+`?;/i, '');
-
-  const connection = await mysql.createConnection({
-    ...dbConfig,
-    multipleStatements: true
-  });
-  try {
-    try {
-      await connection.query(
-        `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-      );
-    } catch (error) {
-      // Hosted MySQL users often cannot create databases; the service DB already exists.
-      console.warn(`Skipping CREATE DATABASE (${error.message})`);
-    }
-    await connection.query(`USE \`${dbName}\``);
-    await connection.query(schema);
-  } finally {
-    await connection.end();
+  for (const sql of statements) {
+    await client.execute(sql);
   }
 }
 

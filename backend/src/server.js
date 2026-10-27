@@ -4,7 +4,12 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
-import { pool, ensureAdminAccount, initializeDatabase } from './db.js';
+import {
+  pool,
+  ensureAdminAccount,
+  initializeDatabase,
+  isUniqueConstraintError
+} from './db.js';
 import { asyncRoute, authenticate, requireAdmin } from './middleware.js';
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -122,7 +127,7 @@ function requireQuantity(value, label = 'Quantity') {
 }
 
 function handleDatabaseError(error, res, next) {
-  if (error.code === 'ER_DUP_ENTRY') {
+  if (isUniqueConstraintError(error)) {
     return res.status(409).json({ error: 'That ISBN, username, or membership ID is already in use.' });
   }
   return next(error);
@@ -236,7 +241,7 @@ api.put('/books/:id', authenticate, requireAdmin, asyncRoute(async (req, res) =>
   try {
     await connection.beginTransaction();
     const [existing] = await connection.execute(
-      'SELECT id, title, quantity FROM books WHERE id = ? FOR UPDATE',
+      'SELECT id, title, quantity FROM books WHERE id = ?',
       [req.params.id]
     );
     if (!existing.length) {
@@ -245,7 +250,8 @@ api.put('/books/:id', authenticate, requireAdmin, asyncRoute(async (req, res) =>
     }
     const previousQuantity = Number(existing[0].quantity);
     await connection.execute(
-      `UPDATE books SET title = ?, author = ?, genre = ?, isbn = ?, quantity = ?
+      `UPDATE books SET title = ?, author = ?, genre = ?, isbn = ?,
+       quantity = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [title, author, genre, isbn, quantity, req.params.id]
     );
@@ -273,7 +279,7 @@ api.put('/books/:id', authenticate, requireAdmin, asyncRoute(async (req, res) =>
     return res.json(mapBook(rows[0]));
   } catch (error) {
     await connection.rollback();
-    if (error.code === 'ER_DUP_ENTRY') {
+    if (isUniqueConstraintError(error)) {
       return res.status(409).json({ error: 'That ISBN is already in use.' });
     }
     throw error;
@@ -327,13 +333,13 @@ api.put('/users/:id', authenticate, requireAdmin, asyncRoute(async (req, res) =>
   }
   try {
     const [existing] = await pool.execute(
-      'SELECT id FROM users WHERE id = ? AND role <> "admin"',
+      "SELECT id FROM users WHERE id = ? AND role <> 'admin'",
       [req.params.id]
     );
     if (!existing.length) return res.status(404).json({ error: 'User not found.' });
     await pool.execute(
       `UPDATE users SET name = ?, member_id = ?, role = ?
-       WHERE id = ? AND role <> "admin"`,
+        WHERE id = ? AND role <> 'admin'`,
       [name, memberId, role, req.params.id]
     );
     return res.json({ id: String(req.params.id), name, memberId, role });
@@ -397,7 +403,7 @@ api.post('/transactions', authenticate, asyncRoute(async (req, res) => {
   try {
     await connection.beginTransaction();
     const [books] = await connection.execute(
-      'SELECT id, title, author, genre, isbn, quantity FROM books WHERE id = ? FOR UPDATE',
+      'SELECT id, title, author, genre, isbn, quantity FROM books WHERE id = ?',
       [bookId]
     );
     if (!books.length) {
@@ -486,7 +492,7 @@ try {
   console.log('Database is ready');
 } catch (error) {
   console.error(
-    'Could not start the API. Check that MySQL is running and the database credentials are correct.',
+    'Could not start the API. Check the Turso URL and authentication token.',
     error
   );
   process.exit(1);

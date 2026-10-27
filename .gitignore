@@ -29,3 +29,5 @@ backend/.env
 library_management/
 *.ibd
 *.bak
+backend/*.db
+backend/*.db-*

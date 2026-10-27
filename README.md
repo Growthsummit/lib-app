@@ -3,27 +3,24 @@
 The React app in `frontend/` uses the Express API in `backend/`. React Router
 uses hash-based routes so the pages also work when deployed to GitHub Pages.
 Books, users, stock changes, transaction history, and login accounts are stored
-in MySQL. The existing page layout and styles are unchanged.
+in Turso (libSQL). The existing page layout and styles are unchanged.
 
 ## Requirements
 
 - Node.js 20.19+ (or 22.12+)
-- MySQL 8+
+- A Turso database for production
 
-## Set up MySQL and the API
+## Set up Turso and the API
 
-1. Create a MySQL user with permission to create/use the `library_management`
-   database, or configure an existing database in the backend environment.
-2. Initialize the database and tables:
-
-   ```powershell
-   Get-Content backend\schema.sql | mysql -u root -p
-   ```
-
-3. Copy `backend\.env.example` to `backend\.env`, then set `DB_USER`,
-   `DB_PASSWORD`, and a unique `JWT_SECRET` of at least 32 characters. Change
-   `ADMIN_PASSWORD` before using the app outside local development.
-4. Install backend dependencies and start the API:
+1. Create a database in [Turso](https://turso.tech/) and get its database URL
+   and authentication token.
+2. Copy `backend\.env.example` to `backend\.env` and set
+   `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, and a unique `JWT_SECRET` of at
+   least 32 characters. Change `ADMIN_PASSWORD` before using the app outside
+   local development. The API creates its tables and initial book records at
+   startup. Both Turso values are required in local development and production;
+   the app does not use a local database fallback.
+3. Install backend dependencies and start the API:
 
    ```powershell
    cd backend
@@ -53,7 +50,7 @@ point the frontend at another API, copy `frontend/.env.example` to
 New self-service registrations receive regular user access; an administrator
 can create and manage library member records from User Management. Administrator
 access is not granted by public registration. Registered usernames are stored
-in MySQL and may contain letters and spaces only; passwords are stored as
+in Turso and may contain letters and spaces only; passwords are stored as
 bcrypt hashes and can be used to sign in after registration.
 Self-registered accounts are also listed in the admin's Registered Users table;
 their usernames and account roles are shown. Admins can delete registered
@@ -72,13 +69,13 @@ Borrowing, returns, and stock changes are recorded transactionally so concurrent
 borrowing requests cannot overdraw the available quantity.
 Administrators can view the full transaction history. Regular users can view
 only their own borrowing and return history and cannot clear transaction history.
-The admin's Registered Users table is loaded from MySQL and includes only
+The admin's Registered Users table is loaded from Turso and includes only
 self-registered user accounts with stored credentials. Fresh database setups
 do not insert example users; existing database rows are kept.
 
 ## Deploy
 
-The React app is built for **Vercel**. The Express API and MySQL run on
+The React app is built for **Vercel**. The Express API runs on
 **Render**. The GitHub repository is `https://github.com/Growthsummit/lib-app.git`.
 
 ### 1. Deploy the API on Render
@@ -86,15 +83,15 @@ The React app is built for **Vercel**. The Express API and MySQL run on
 1. Push this repository to GitHub (`library-app` is the git root).
 2. In [Render](https://dashboard.render.com), choose **New > Blueprint** and
    select this repository. Render reads `render.yaml`.
-3. The blueprint creates `library-mysql` (private MySQL with a disk) and
-   `library-api` (Node web service, root directory `backend`).
+3. The blueprint creates `library-api` (Node web service, root directory
+   `backend`). Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from your Turso
+   database on the service when prompted by Render.
    If you already created `library-api` as a manual web service, syncing the
    Blueprint is required for Render to apply its service settings. Otherwise,
    configure that service with root directory `backend`, build command
-   `npm install && npm run build`, start command `npm start`, and the database
-   environment variables shown in `render.yaml` (`DB_HOST=library-mysql`,
-   `DB_PORT=3306`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`). Do not use
-   `npm run dev` as the production start command.
+   `npm install && npm run build`, start command `npm start`, and set
+   `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. Do not use `npm run dev` as the
+   production start command.
 4. Set `CLIENT_ORIGIN` on `library-api` to the Vercel URL with no trailing
    slash, for example `https://your-app.vercel.app`. You can add this after
    Vercel gives you a domain; until then CORS will reject the frontend.
@@ -104,10 +101,9 @@ The React app is built for **Vercel**. The Express API and MySQL run on
 6. Confirm `https://your-api.onrender.com/api/health` returns `{ "ok": true }`.
    The first request after idle time on the free plan can take about a minute.
 
-MySQL on Render needs a persistent disk, which is not available on the free
-instance type. If you prefer an external MySQL host, delete the
-`library-mysql` service and set `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`,
-and `DB_NAME` on `library-api`. Set `DB_SSL=true` if that host requires TLS.
+If you are switching an existing deployment from MySQL, its existing data is
+not copied automatically. Export and migrate the records separately before
+switching the API to Turso.
 
 ### 2. Deploy the frontend on Vercel
 

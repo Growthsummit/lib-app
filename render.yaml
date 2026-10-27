@@ -1,28 +1,6 @@
-# Render Blueprint: Express API plus a private MySQL service.
+# Render web service for the API. The database is hosted by Turso.
 # The React frontend is deployed separately on Vercel.
-# Render has no managed MySQL, so MySQL runs as a Docker private service
-# backed by a persistent disk. See https://render.com/docs/deploy-mysql
 services:
-  - type: pserv
-    name: library-mysql
-    runtime: docker
-    repo: https://github.com/render-examples/mysql.git
-    # Disks require a paid instance type; the free tier is not available here.
-    plan: 0.5c-512mb
-    envVars:
-      - key: MYSQL_DATABASE
-        value: library_management
-      - key: MYSQL_USER
-        value: library
-      - key: MYSQL_PASSWORD
-        generateValue: true
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
-    disk:
-      name: library-mysql-data
-      mountPath: /var/lib/mysql
-      sizeGB: 10
-
   - type: web
     name: library-api
     runtime: node
@@ -36,28 +14,18 @@ services:
         value: 20.19.0
       - key: NODE_ENV
         value: production
-      - key: DB_HOST
-        value: library-mysql
-      - key: DB_PORT
-        value: 3306
-      - key: DB_USER
-        value: library
-      - key: DB_PASSWORD
-        fromService:
-          type: pserv
-          name: library-mysql
-          envVarKey: MYSQL_PASSWORD
-      - key: DB_NAME
-        value: library_management
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_USERNAME
         value: admin
-      # Read the generated value from the Render dashboard to sign in as admin.
+      # Set the generated value in the Render dashboard to sign in as admin.
       - key: ADMIN_PASSWORD
         generateValue: true
-      # Set this in the Render dashboard to the Vercel URL, for example
-      # https://your-app.vercel.app  (no trailing slash)
+      # Set this to the Vercel URL with no trailing slash.
       - key: CLIENT_ORIGIN
         sync: false
       - key: ALLOW_VERCEL_PREVIEWS

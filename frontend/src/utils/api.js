@@ -34,7 +34,7 @@ export async function apiRequest(path, options = {}) {
   } catch {
     throw new Error(
       import.meta.env.DEV
-        ? 'Cannot reach the library API. Start the Express server and MySQL, then try again.'
+        ? 'Cannot reach the library API. Start the Express server and check its configured database, then try again.'
         : 'Cannot reach the library API. Check VITE_API_URL and that the Render service is running.'
     );
   }
