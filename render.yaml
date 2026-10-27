@@ -28,8 +28,8 @@ services:
     runtime: node
     rootDir: backend
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install
+    startCommand: npm run dev
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
