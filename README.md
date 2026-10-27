@@ -78,6 +78,14 @@ do not insert example users; existing database rows are kept.
 The React app is built for **Vercel**. The Express API runs on
 **Render**. The GitHub repository is `https://github.com/Growthsummit/lib-app.git`.
 
+### GitHub Pages
+
+The frontend is also deployed automatically to GitHub Pages at
+`https://growthsummit.github.io/lib-app/` whenever changes are pushed to
+`main`. In the repository's **Settings > Pages**, set the build and deployment
+source to **GitHub Actions**. The Pages site calls the Render API configured
+in `frontend/.env.production`; the API allows the GitHub Pages origin.
+
 ### 1. Deploy the API on Render
 
 1. Push this repository to GitHub (`library-app` is the git root).

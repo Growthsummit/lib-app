@@ -21,7 +21,8 @@ app.set('trust proxy', 1);
 
 const allowedOrigins = new Set([
   'http://localhost:5173',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'https://growthsummit.github.io'
 ]);
 for (const origin of String(process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',')) {
   const trimmed = origin.trim().replace(/\/$/, '');
