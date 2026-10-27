@@ -7,7 +7,10 @@ const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || ''
+  password: process.env.DB_PASSWORD || '',
+  ssl: process.env.DB_SSL === 'true'
+    ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    : undefined
 };
 
 export const pool = mysql.createPool({
@@ -15,7 +18,8 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME || 'library_management',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  enableKeepAlive: true
 });
 
 export async function initializeDatabase() {
@@ -33,7 +37,14 @@ export async function initializeDatabase() {
     multipleStatements: true
   });
   try {
-    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    try {
+      await connection.query(
+        `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+    } catch (error) {
+      // Hosted MySQL users often cannot create databases; the service DB already exists.
+      console.warn(`Skipping CREATE DATABASE (${error.message})`);
+    }
     await connection.query(`USE \`${dbName}\``);
     await connection.query(schema);
   } finally {

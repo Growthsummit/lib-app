@@ -12,19 +12,33 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 }
 
 const app = express();
+app.set('trust proxy', 1);
+
 const allowedOrigins = new Set([
-  process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   'http://localhost:5173',
   'http://127.0.0.1:5173'
 ]);
+for (const origin of String(process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',')) {
+  const trimmed = origin.trim().replace(/\/$/, '');
+  if (trimmed) allowedOrigins.add(trimmed);
+}
 // Accept any localhost origin so the Vite dev server can fall back to another
 // port (for example 5174 when 5173 is already taken) without the API rejecting
 // the request.
 const localOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+const vercelPreviewPattern = /^https:\/\/[\w.-]+\.vercel\.app$/;
+let databaseReady = false;
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || localOriginPattern.test(origin)) {
+    const normalized = origin ? origin.replace(/\/$/, '') : origin;
+    if (
+      !origin
+      || allowedOrigins.has(normalized)
+      || localOriginPattern.test(normalized)
+      || (allowVercelPreviews && vercelPreviewPattern.test(normalized))
+    ) {
       return callback(null, true);
     }
     const error = new Error(`Origin ${origin} is not allowed to use the library API.`);
@@ -34,10 +48,17 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '100kb' }));
 
+app.get('/', (_req, res) => {
+  return res.json({ service: 'library-api', health: '/api/health' });
+});
+
 const api = express.Router();
 app.use('/api', api);
 
 api.get('/health', (_req, res) => {
+  if (!databaseReady) {
+    return res.status(503).json({ ok: false, reason: 'database' });
+  }
   return res.json({ ok: true });
 });
 
@@ -432,13 +453,41 @@ app.use((error, _req, res, _next) => {
 });
 
 const port = Number(process.env.PORT || 3001);
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startDatabase(maxAttempts = 20) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await initializeDatabase();
+      await ensureAdminAccount();
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `Database setup failed (attempt ${attempt}/${maxAttempts}): ${error.message}`
+      );
+      await delay(3000);
+    }
+  }
+  throw lastError;
+}
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Library API listening on port ${port}`);
+});
+
 try {
-  await initializeDatabase();
-  await ensureAdminAccount();
-  app.listen(port, () => {
-    console.log(`Library API listening on port ${port}`);
-  });
+  await startDatabase();
+  databaseReady = true;
+  console.log('Database is ready');
 } catch (error) {
-  console.error('Could not start the API. Check that MySQL is running and the database credentials in backend/.env are correct.', error);
-  process.exitCode = 1;
+  console.error(
+    'Could not start the API. Check that MySQL is running and the database credentials are correct.',
+    error
+  );
+  process.exit(1);
 }

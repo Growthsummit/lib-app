@@ -46,8 +46,9 @@ npm install
 npm run dev
 ```
 
-The frontend defaults to `http://localhost:3001/api`. To use another API
-address, create a root `.env` containing `VITE_API_URL=http://localhost:3001/api`.
+During local development, Vite proxies `/api` to `http://localhost:3001`. To
+point the frontend at another API, copy `frontend/.env.example` to
+`frontend/.env` and set `VITE_API_URL`.
 
 New self-service registrations receive regular user access; an administrator
 can create and manage library member records from User Management. Administrator
@@ -74,3 +75,46 @@ only their own borrowing and return history and cannot clear transaction history
 The admin's Registered Users table is loaded from MySQL and includes only
 self-registered user accounts with stored credentials. Fresh database setups
 do not insert example users; existing database rows are kept.
+
+## Deploy
+
+The React app is built for **Vercel**. The Express API and MySQL run on
+**Render**. The GitHub repository is `https://github.com/Growthsummit/lib-app.git`.
+
+### 1. Deploy the API on Render
+
+1. Push this repository to GitHub (`library-app` is the git root).
+2. In [Render](https://dashboard.render.com), choose **New > Blueprint** and
+   select this repository. Render reads `render.yaml`.
+3. The blueprint creates `library-mysql` (private MySQL with a disk) and
+   `library-api` (Node web service, root directory `backend`).
+4. Set `CLIENT_ORIGIN` on `library-api` to the Vercel URL with no trailing
+   slash, for example `https://your-app.vercel.app`. You can add this after
+   Vercel gives you a domain; until then CORS will reject the frontend.
+5. After the first deploy, open the `library-api` environment tab and copy:
+   - the public service URL (used as `VITE_API_URL` on Vercel)
+   - `ADMIN_PASSWORD` (generated; this is the admin sign-in password)
+6. Confirm `https://your-api.onrender.com/api/health` returns `{ "ok": true }`.
+   The first request after idle time on the free plan can take about a minute.
+
+MySQL on Render needs a persistent disk, which is not available on the free
+instance type. If you prefer an external MySQL host, delete the
+`library-mysql` service and set `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`,
+and `DB_NAME` on `library-api`. Set `DB_SSL=true` if that host requires TLS.
+
+### 2. Deploy the frontend on Vercel
+
+1. In [Vercel](https://vercel.com), import the same GitHub repository.
+2. Leave the **Root Directory** as the repository root. `vercel.json` already
+   installs and builds `frontend/` and publishes `frontend/dist`.
+3. Add an environment variable **before the first production build**:
+   - Name: `VITE_API_URL`
+   - Value: `https://your-api.onrender.com/api` (your Render URL, including `/api`)
+4. Deploy. After Vercel assigns a domain, set `CLIENT_ORIGIN` on Render to
+   `https://your-app.vercel.app` and redeploy the API (or restart the service)
+   so the browser is allowed to call it.
+5. Rebuild the Vercel project if you change `VITE_API_URL`; Vite bakes that
+   value in at build time.
+
+`ALLOW_VERCEL_PREVIEWS=true` on Render lets `*.vercel.app` preview URLs call
+the API. Turn it off if you only want the production origin.

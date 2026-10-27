@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '/api' : 'http://localhost:3001/api');
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '/api' : '');
 const TOKEN_KEY = 'library_access_token';
 
 export function setAccessToken(token) {
@@ -24,11 +24,19 @@ export async function apiRequest(path, options = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
+  if (!API_URL) {
+    throw new Error('The library API address is not configured. Set VITE_API_URL to your Render URL, including /api.');
+  }
+
   let response;
   try {
     response = await fetch(`${API_URL}${path}`, { ...options, headers });
   } catch {
-    throw new Error('Cannot reach the library API. Start the Express server and MySQL, then try again.');
+    throw new Error(
+      import.meta.env.DEV
+        ? 'Cannot reach the library API. Start the Express server and MySQL, then try again.'
+        : 'Cannot reach the library API. Check VITE_API_URL and that the Render service is running.'
+    );
   }
   if (response.status === 204) return null;
 
