@@ -24,3 +24,8 @@ backend/.env
 *.njsproj
 *.sln
 *.sw?
+
+# Database binaries
+library_management/
+*.ibd
+*.bak

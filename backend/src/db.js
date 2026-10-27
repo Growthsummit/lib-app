@@ -20,12 +20,21 @@ export const pool = mysql.createPool({
 
 export async function initializeDatabase() {
   const schemaPath = fileURLToPath(new URL('../schema.sql', import.meta.url));
-  const schema = await readFile(schemaPath, 'utf8');
+  let schema = await readFile(schemaPath, 'utf8');
+  const dbName = process.env.DB_NAME || 'library_management';
+
+  // Remove hardcoded CREATE DATABASE and USE statements from schema
+  // and handle it dynamically based on .env
+  schema = schema.replace(/CREATE DATABASE IF NOT EXISTS `?\w+`?[^;]*;/i, '');
+  schema = schema.replace(/USE `?\w+`?;/i, '');
+
   const connection = await mysql.createConnection({
     ...dbConfig,
     multipleStatements: true
   });
   try {
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await connection.query(`USE \`${dbName}\``);
     await connection.query(schema);
   } finally {
     await connection.end();

@@ -17,12 +17,19 @@ const allowedOrigins = new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173'
 ]);
+// Accept any localhost origin so the Vite dev server can fall back to another
+// port (for example 5174 when 5173 is already taken) without the API rejecting
+// the request.
+const localOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    if (!origin || allowedOrigins.has(origin) || localOriginPattern.test(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('This origin is not allowed to use the library API.'));
+    const error = new Error(`Origin ${origin} is not allowed to use the library API.`);
+    error.status = 403;
+    return callback(error);
   }
 }));
 app.use(express.json({ limit: '100kb' }));
@@ -264,7 +271,7 @@ api.get('/users', authenticate, requireAdmin, asyncRoute(async (_req, res) => {
   const [rows] = await pool.execute(
     `SELECT id, name, member_id, role, username
      FROM users
-     WHERE role = 'user' AND username IS NOT NULL AND password_hash IS NOT NULL
+     WHERE role <> 'admin'
      ORDER BY name`
   );
   return res.json(rows.map(mapUser));
@@ -299,13 +306,13 @@ api.put('/users/:id', authenticate, requireAdmin, asyncRoute(async (req, res) =>
   }
   try {
     const [existing] = await pool.execute(
-      'SELECT id FROM users WHERE id = ? AND username IS NULL',
+      'SELECT id FROM users WHERE id = ? AND role <> "admin"',
       [req.params.id]
     );
     if (!existing.length) return res.status(404).json({ error: 'User not found.' });
     await pool.execute(
       `UPDATE users SET name = ?, member_id = ?, role = ?
-       WHERE id = ? AND username IS NULL`,
+       WHERE id = ? AND role <> "admin"`,
       [name, memberId, role, req.params.id]
     );
     return res.json({ id: String(req.params.id), name, memberId, role });
