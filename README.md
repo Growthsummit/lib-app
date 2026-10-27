@@ -118,7 +118,9 @@ and `DB_NAME` on `library-api`. Set `DB_SSL=true` if that host requires TLS.
    `npm --prefix frontend install`, the build looks for
    `frontend/frontend/package.json` and fails. Use `npm install`,
    `npm run build`, and output directory `dist`.
-3. Add an environment variable **before the first production build**:
+3. The repository's `frontend/.env.production` configures the current Render
+   API URL by default. If your Render service URL changes, update that file or
+   set this Vercel environment variable to override it **before building**:
    - Name: `VITE_API_URL`
    - Value: `https://your-api.onrender.com/api` (your Render URL, including `/api`)
 4. Deploy. After Vercel assigns a domain, set `CLIENT_ORIGIN` on Render to
