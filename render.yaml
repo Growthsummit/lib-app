@@ -7,7 +7,7 @@ services:
     rootDir: backend
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npm run dev
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
