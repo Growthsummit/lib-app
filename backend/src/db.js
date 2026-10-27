@@ -4,7 +4,9 @@ import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || (
+    process.env.NODE_ENV === 'production' ? 'library-mysql' : 'localhost'
+  ),
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',

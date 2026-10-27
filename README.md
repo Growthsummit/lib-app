@@ -88,6 +88,13 @@ The React app is built for **Vercel**. The Express API and MySQL run on
    select this repository. Render reads `render.yaml`.
 3. The blueprint creates `library-mysql` (private MySQL with a disk) and
    `library-api` (Node web service, root directory `backend`).
+   If you already created `library-api` as a manual web service, syncing the
+   Blueprint is required for Render to apply its service settings. Otherwise,
+   configure that service with root directory `backend`, build command
+   `npm install && npm run build`, start command `npm start`, and the database
+   environment variables shown in `render.yaml` (`DB_HOST=library-mysql`,
+   `DB_PORT=3306`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`). Do not use
+   `npm run dev` as the production start command.
 4. Set `CLIENT_ORIGIN` on `library-api` to the Vercel URL with no trailing
    slash, for example `https://your-app.vercel.app`. You can add this after
    Vercel gives you a domain; until then CORS will reject the frontend.
